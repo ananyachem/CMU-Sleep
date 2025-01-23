@@ -1,0 +1,324 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+
+df <- read.csv("cmu-sleep.csv")
+head(df)
+dim(df)
+
+```
+
+
+```{r}
+
+summary(df)
+
+```
+
+
+```{r}
+
+suppressMessages(library(tidyverse))
+suppressMessages(library(dplyr))
+
+
+df <- df %>% select(., -subject_id)
+
+```
+```
+The subject_id column does not provide any meaningful information about the study, so we can drop it. 
+```
+
+
+```{r}
+
+colSums(is.na(df))
+
+```
+
+
+```
+Checking to see if the missing values for term_units and Zterm_units_ZofZ is for a particular study:
+```
+```{r}
+
+ggplot(data=df, mapping=aes(x = term_units)) +
+  geom_histogram(col="black", fill="pink") +
+  facet_wrap(~study, scales='free')
+
+```
+```
+term_units for study 4- Notre Dame University is empty. Let's do one more histogram to check if the null values in Zterm_units_ZofZ is also for study 4- Notre Dame University.
+```
+
+
+```{r}
+
+ggplot(data=df, mapping=aes(x = Zterm_units_ZofZ)) +
+  geom_histogram(col="black", fill="pink") +
+  facet_wrap(~study, scales='free')
+
+```
+```
+Zterm_units_ZofZ for study 4- Notre Dame University is also empty. We should be able to drop the values for study 4 now since its missing some essential information about the study. 
+```
+
+
+```{r}
+
+df <- df %>% drop_na(.)
+colSums(is.na(df))
+
+```
+
+
+```{r}
+
+unique(df$study)
+unique(df$demo_race)
+unique(df$demo_gender)
+unique(df$demo_firstgen)
+
+```
+```
+We can exclude these columns from removing the outliers since there wont be any outliers present here. 
+```
+
+
+```
+Exploring why there is a 2 in demo_firstgen and checking if it occurs frequently. 
+```
+```{r}
+
+ggplot(data=df, mapping=aes(x=demo_firstgen)) + geom_histogram(col="black", fill="pink")
+
+```
+```
+It seems that there is only one occurance of 2. We can cross verify this by finding the sum. 
+```
+
+
+```{r}
+
+sum(df$demo_firstgen == 2)
+df <- df %>% filter(demo_firstgen !=2)
+
+```
+```
+This confirms that 2 occurs only once and it might have been a wrong entry, so we can remove that one value. 
+```
+
+
+```
+Factoring the categorical variables:
+```
+```{r}
+
+df <- df %>% mutate(
+  study = factor(study),
+  demo_race = factor(demo_race),
+  demo_gender = factor(demo_gender),
+  demo_firstgen = factor(demo_firstgen)
+  )
+
+```
+
+
+```{r}
+
+df %>% select(-study, -cohort, -demo_race, -demo_gender, -demo_firstgen) %>%
+  gather(key="key", value="value") %>% 
+  ggplot(aes(x=key, y=value)) +
+  geom_boxplot(fill="pink") +
+  facet_wrap(~key, scales="free") 
+
+```
+```
+Every column except for term units have outliers. We need to handle these outliers now. 
+```
+
+
+```
+Finding the mean before removing the outliers to see how much we affect the data by actually removing them. 
+```
+```{r}
+
+mean(df$bedtime_mssd)
+mean(df$cum_gpa)
+mean(df$daytime_sleep)
+mean(df$term_gpa)
+mean(df$TotalSleepTim)
+mean(df$Zterm_units_ZofZ)
+
+```
+
+
+```
+Looking at the box plot above, we only want to remove the extreme outliers that are isolated from the whiskers. To do this, we can manually set a threshold for each column according to the outlier values and remove them from the corresponding columns. 
+```
+```{r}
+
+bedtime_mssd_threshold <- 15
+cum_gpa_threshold <- 1.5 
+daytime_sleep_threshold <- 200
+term_gpa_threshold <- 0.5
+TotalSleepTime_threshold <- 550
+Zterm_units_ZofZ_threshold <- 3
+
+df <- df[ 
+  df$bedtime_mssd <= bedtime_mssd_threshold & 
+  df$cum_gpa >= cum_gpa_threshold & 
+  df$daytime_sleep <= daytime_sleep_threshold &
+  df$term_gpa >= term_gpa_threshold &
+  df$TotalSleepTime <= TotalSleepTime_threshold &
+  df$Zterm_units_ZofZ <= Zterm_units_ZofZ_threshold, ]
+
+```
+
+
+```
+Re-checking the mean, we can see that the values have been preserved with only a very small change after removing the outliers. 
+```
+```{r}
+
+mean(df$bedtime_mssd)
+mean(df$cum_gpa)
+mean(df$daytime_sleep)
+mean(df$term_gpa)
+mean(df$TotalSleepTime)
+mean(df$Zterm_units_ZofZ)
+
+```
+
+
+```{r}
+
+df %>% select(-study, -cohort, -demo_race, -demo_gender, -demo_firstgen) %>%
+  gather(key="key", value="value") %>% 
+  ggplot(aes(x=key, y=value)) +
+  geom_boxplot(fill="pink") +
+  facet_wrap(~key, scales="free")
+
+```
+```
+We only removed the outliers which were isolated from the whiskers, to still preserve the data set. Looking at the box plot above, we can see that they have been handled effectively.
+```
+
+```
+Visualizing the data set to find meaningful relations:
+```
+
+```{r}
+
+df.1 <- df %>% select(demo_race, demo_gender, demo_firstgen) %>% gather(.)
+
+ggplot(data=df.1, mapping=aes(x=value, y=rep(df$term_gpa, 3))) +
+  geom_boxplot(fill="pink") +
+    facet_wrap(~key, scales='free') + 
+    ylab("Term GPA")
+
+```
+```
+We can make the following inferences:
+
+First Gen vs Term GPA
+1) We can see that the Term GPA for first gen students is being cut off at around 2.5, with only 2 exceptions. But the cut off for non-first gen students is slightly lower along with a few more exceptions present.
+
+2) Gender vs Term GPA
+The distribution looks relatively similar. There are no major noticeable differences. 
+
+3) Race vs Term GPA
+This distribution also looks relatively similar, except for the least value for Term GPA in non-underpresented communities is slightly lower compared to the least value for Term GPA value in underpresented communities. 
+```
+
+
+```{r}
+
+plot(df$study, df$TotalSleepTime, pch = 19)
+
+```
+```
+The medians for all 4 schools total sleep time are approximately the same. Although, school 1 (Carnegie Mellon in Spring 2018) seems to have gotten the least sleep compared to the other schools. 
+```
+
+
+```{r}
+
+ggplot(df, aes(x=TotalSleepTime, y=term_gpa, color=factor(study))) + geom_point() 
+
+```
+```
+We can see a somewhat distributed relationship, where, the total sleep time does not really affect the cummulative gpa largely. We can draw this conclusion by seeing that there are some students who got less sleep (~300 minutes) and some students who got a lot of sleep (~500 minutes)- both still got a 4.0 GPA. Whereas, students who got minimal sleep (~50 minutes) and quite some sleep (~450 mintues) still got a lesser GPA. 
+
+
+This can lead us to wonder how daytime_sleep affects this distribution. Let's check the relation between students who sleep during the day time vs students who sleep at night, and ultimately how this affected their GPA.  
+```
+```{r}
+
+ggplot(df, aes(x=daytime_sleep, y=TotalSleepTime, color=factor(study))) + geom_point() 
+
+```
+```
+It appears that the majority of students didn't get a lot of daytime sleep (most of the values are capped around ~ 75 minutes) with only a couple of exceptions. Except for 4 students, all the others got only a maximum of ~125 minutes of daytime sleep. 
+```
+
+
+```{r}
+
+ggplot(df, aes(x=daytime_sleep, y=term_gpa, color=factor(study))) + geom_point() 
+
+```
+```
+On observing this plot, we cannot draw any definitive inferences about how the amount of sleep influences the Term GPA. But, we can note that all students who got a 4 GPA got no more than ~75 minutes of daytime sleep. 
+```
+
+
+```
+Now, we can look into the data and try to find the relation of the Term GPA with other variables. 
+Checking to see if the number of units affects the Term GPA and sleep patterns:
+```
+```{r}
+
+ggplot(df, aes(x=Zterm_units_ZofZ, y=term_gpa, color=factor(study))) + geom_point() 
+
+```
+
+
+```{r}
+
+df_scaled <- scale(df[, c("TotalSleepTime", "term_gpa")])
+
+set.seed(101)
+kmeans_result <- kmeans(df_scaled, centers = 3)
+
+df$cluster <- as.factor(kmeans_result$cluster)
+
+ggplot(df, aes(x = TotalSleepTime, y = term_gpa, color = cluster)) + geom_point(size = 2) 
+
+```
+```
+Cluster 1 shows that students with a higher amount of sleep get a higher GPA. 
+Cluster 2 has the students who got the least amount of sleep, but the distribution is quite spread out. 
+Cluster 3 shows that students who did in fact get moderate to high amounts of sleep got a maximum GPA of around ~3.5. Most of the data points in cluster 3 point to a GPA of ~2.5 to ~3.5. 
+```
+
+
+```{r}
+
+library(corrplot)
+cor_matrix <- cor(df[, c("term_gpa", "bedtime_mssd", "TotalSleepTime",  "midpoint_sleep", "frac_nights_with_data", "cum_gpa", "daytime_sleep", "Zterm_units_ZofZ")])
+
+corrplot(cor_matrix, method = "color", tl.col = "black")
+
+```
+```
+It seems that the total sleep time and term GPA have the highest positive correlation. 
+Day time sleep and total sleep time have the highest negative correlation. 
+This information could be valuable when building the prediction model. 
+```
